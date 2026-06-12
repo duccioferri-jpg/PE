@@ -1,81 +1,31 @@
-# Private Equity Secondary Market Simulator: The Reverted J-Curve & Discount Estimator
+##  Detailed Step-by-Step Code Explanation
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![NumPy](https://img.shields.io/badge/NumPy-Data%20Science-orange)
-![SciPy](https://img.shields.io/badge/SciPy-Statistics-lightblue)
-![Matplotlib](https://img.shields.io/badge/Matplotlib-Visualization-yellow)
+The simulation engine is housed in the `Primary_VS_Secondary_Funds.ipynb` notebook and is meticulously structured into five sequential steps. Below is a detailed breakdown of the internal mechanics at each stage of the model.
 
-## Project Overview
+### STEP 1: Macro-Calibration & Parametrization
+This section initializes the simulation environment and defines the global parameters.
+* **Micro-Dynamics:** Portfolio companies are modeled using a Geometric Brownian Motion (GBM). Sector-specific drifts ($\mu$), idiosyncratic volatilities ($\sigma$), and Hamada-relevered betas are anchored to Damodaran's industry datasets. Note: The $-\frac{1}{2}\sigma^2$ term in the GBM naturally tempers arithmetic returns in high-dispersion sectors, resulting in a realistically conservative aggregate TVPI.
+* **Accounting Lag:** The GP appraisal smoothing parameter is strictly calibrated to $\lambda = 0.50$ (Brown, Ghysels & Gredil, 2023) to simulate the stale reporting of True NAV.
+* **Exogenous Distributions:** Baseline secondary entry timing and discount depths are drawn from empirical distributions (Nadauld et al., 2019), which are later endogenized in Step 2.
 
-This repository contains a stochastic simulation engine (Monte Carlo) developed to analyze and compare the performance and risk dynamics between the **Primary** and **Secondary** Private Equity markets. 
+### STEP 2: The Simulation Engine (Systemic Macro-Cohorts)
+To accurately model systemic risk and avoid artificially narrow confidence intervals, the engine employs a **Flattened Cohort Architecture**.
+* **Macro Clustering:** Instead of simulating 10,000 independent funds, the model generates 50 independent global macro-economies, clustering 200 funds within each.
+* **European Waterfall:** Cash flows are processed through an exact Sequential European Waterfall, including a 100% GP Catch-Up and a 2% management fee that steps down from Committed to Active Capital after the investment period.
+* **Endogenous Secondary Entry:** Sale timing is dynamically coupled to the macro-regime. During simulated market crashes (1-year trailing index drop > 10%), LP distress surges via the *Denominator Effect*. This mechanically clusters funds into the deep-discount "Liquidity Channel," overriding standard probabilistic entry.
 
-The model mathematically demonstrates the elimination of the traditional J-Curve (the "Reverted J-Curve"), the drastic mitigation of *Blind Pool Risk*, and introduces a novel, closed-loop validated algebraic estimator to deduce private transaction discounts from public cash flows.
+### STEP 3: Performance Metrics & Validation
+The model calculates standard Private Equity performance metrics (Net IRR, Net TVPI, and Kaplan-Schoar PME) for both primary and secondary trajectories. 
+* **Moment-Matching:** The notebook validates that the micro-parameters organically reproduce non-targeted macroeconomic realities (e.g., net TVPI ~1.40x, KS-PME ~1.0x, and blended secondary discounts ~13.8%). 
+* **The Reverted J-Curve:** The aggregated data demonstrates how secondary entry mechanically mitigates early-stage fee drag and accelerates the DPI trajectory.
 
-This codebase was developed as an integral part of my academic thesis and research work.
+### STEP 4: Algebraic Sanity Check (Closed-Loop Validation)
+Before applying the TVPI-gap estimator to noisy, out-of-sample data, the model tests the theoretical algebraic inversion under ideal conditions.
+* A deterministic grid of discounts (0% to 30%) is forced onto predetermined entry ages (Years 3, 5, and 7).
+* The estimator successfully plots a 45-degree diagonal recovery line, proving that the mathematical formula correctly reverses the cash-flow mechanics, carrying only a marginal 2-3pp offset due to embedded fee drag.
 
-## Core Features & Methodology
-
-* **Stochastic Asset Generation:** Simulates the evolution of underlying portfolio companies' NAVs via Geometric Brownian Motion (GBM).
-* **Appraisal Smoothing (BGG 2023):** Implements a realistic accounting lag to simulate the pricing friction between the "True NAV" and the "Reported NAV" published quarterly by General Partners (GPs).
-* **Dual Time-Alignment:** Calculates performance metrics by aligning cash flows along two different time axes: *Calendar Time* (overall fund life) and *Investor Age* (the individual holding period of the buyer).
-* **Vectorized Computation:** Utilizes the bisection method via NumPy to solve for the IRR across tens of thousands of funds simultaneously without slow iterative loops.
-* **Relative Metrics:** Includes the calculation of the **KS-PME (Kaplan-Schoar Public Market Equivalent)** to adjust performance for public equity market beta and isolate managerial alpha.
-
-## Model Structure
-
-The simulation is divided into 5 sequential logical steps:
-
-### Step 1 & 2: Universe Creation & Accounting
-Generates a Monte Carlo sample of N funds (e.g., 10,000). The model builds portfolios company by company and applies parametric smoothing to create the delayed, reported accounting valuations visible to limited partners.
-
-### Step 3: Secondary Entry & Metrics Calculation
-Simulates the entry of a secondary buyer (LP) at the fund's mid-life. The buyer purchases the LP stake by applying a pre-negotiated discount to the *Reported NAV*. The model calculates the IRR, TVPI, DPI, and KS-PME using time-aligned cash flows.
-
-### Step 4: Data Visualization & Risk Analysis
-Generates performance plots (The Reverted J-Curve). It utilizes percentile bands (Interquartile Range or P10-P90) to provide visual proof of the drastic reduction in return dispersion (risk) in the secondary market compared to the primary market.
-
-### Step 5: Closed-Loop Validation (The Implied Discount Estimator)
-Mathematically validates an inverse algebraic formula designed to recover the original, private transaction discount (d) relying purely on observable terminal performance multiples:
-
-`d = (c + 1) * [ 1 - (TVPI_p / TVPI_s) ]`
-
-The script runs an Ordinary Least Squares (OLS) regression between the True Discount (the hidden model input) and the Implied Discount (the formula output). Achieving a perfect R-squared of 1.0, it proves that the estimator perfectly corrects the TVPI gap for the dilution caused by unfunded commitments (c).
-
-## Requirements & Installation
-
-The model is built entirely in Python. Required libraries include `numpy`, `scipy`, and `matplotlib`.
-
-To run the codebase locally, follow these steps:
-
-**1. Clone the repository:**
-```bash
-git clone [https://github.com/your-username/repo-name.git](https://github.com/your-username/repo-name.git)
-```
-
-**2. Install the dependencies:**
-```bash
-pip install numpy scipy matplotlib
-```
-
-**3. Run the main simulation script:**
-```bash
-python Secondary_performance.py
-```
-
-## Output Examples
-
-Running the script will generate three main plots:
-
-1. **The Reverted J-Curve:** Showcases the initial IRR spike generated by the discount (Short-Holding Effect) and the subsequent convergence.
-2. **Three-Panel Metrics:** A side-by-side comparison of IRR, TVPI, DPI and KS-PME trajectories.
-3. **Estimator Validation Scatter Plot:** Statistical validation of the algebraic estimator (R-squared = 1.0) on the perfect 1:1 diagonal.
-
-## Author
-
-* **Duccio Ferri**
-* Contact: duccioferri93@gmail.com
-* Affiliation: Politecnico di Milano / IQS Barcelona
-
-## License
-
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
+### STEP 5: Discount Recovery & The Staleness Wedge
+This final step tests the estimator on the empirical, out-of-sample secondary funds generated in Step 2.
+* **Cluster Robust Bootstrap:** To compute honest confidence intervals, the bootstrap resamples *entire macro-economies* rather than individual funds, preserving systemic correlation.
+* **Within-Economy Fixed Effects:** By calculating the recovery within each of the 50 economies, the model differences out the macro draw, significantly tightening the confidence intervals and revealing the impact of **Selection Bias** (Quality Alpha) in shallow, opportunistic discount channels.
+* **The Staleness Wedge (Headline Finding):** The model decomposes the observable contract discount against the True Economic Discount. The output proves that during forced-selling regimes (crashes), the observable discount severely overstates the true liquidity premium due to NAV staleness.
